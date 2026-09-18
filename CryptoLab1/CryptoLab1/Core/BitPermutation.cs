@@ -66,7 +66,7 @@ namespace CryptoLab1.Core
         {
             ArgumentNullException.ThrowIfNull(data);
 
-            int totalBits = data.Length * 8;
+            var totalBits = data.Length * 8;
             if (bitIndex < 0 || bitIndex >= totalBits)
             {
                 throw new ArgumentOutOfRangeException(
@@ -74,18 +74,8 @@ namespace CryptoLab1.Core
                     $"Bit index {bitIndex} is out of range [0, {totalBits - 1}].");
             }
 
-            int byteIndex, bitShift;
+            var (byteIndex, bitShift) = GetIndexAndShift(direction, data.Length, bitIndex);
 
-            if (direction == BitDirection.MsbFirst)
-            {
-                byteIndex = bitIndex / 8;
-                bitShift = 7 - (bitIndex % 8);
-            }
-            else
-            {
-                byteIndex = data.Length - 1 - (bitIndex / 8);
-                bitShift = bitIndex % 8;
-            }
 
             return (data[byteIndex] >> bitShift) & 1;
         }
@@ -102,8 +92,22 @@ namespace CryptoLab1.Core
                     $"Bit index {bitIndex} is out of range [0, {totalBits - 1}].");
             }
 
-            int byteIndex, bitShift;
+            var (byteIndex, bitShift) = GetIndexAndShift(direction, data.Length, bitIndex);
 
+
+            if (bitValue == 1)
+            {
+                data[byteIndex] |= (byte)(1 << bitShift);
+            }
+            else
+            {
+                data[byteIndex] &= (byte)~(1 << bitShift);
+            }
+
+        }
+        private static (int byteIndex, int bitShift) GetIndexAndShift(BitDirection direction, int dataLen, int bitIndex)
+        {
+            int byteIndex, bitShift;
             if (direction == BitDirection.MsbFirst)
             {
                 // totalBits = 24, bitIndex = 3
@@ -116,19 +120,10 @@ namespace CryptoLab1.Core
             }
             else
             {
-                byteIndex = data.Length - 1 - bitIndex / 8;
+                byteIndex = dataLen - 1 - bitIndex / 8;
                 bitShift = bitIndex % 8;
             }
-
-            if (bitValue == 1)
-            {
-                data[byteIndex] |= (byte)(1 << bitShift);
-            }
-            else
-            {
-                data[byteIndex] &= (byte)~(1 << bitShift);
-            }
-
+            return (byteIndex, bitShift);
         }
     }
 }
