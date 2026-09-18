@@ -14,53 +14,28 @@ namespace CryptoLab1.Core
             ArgumentNullException.ThrowIfNull(value);
             ArgumentNullException.ThrowIfNull(pBlock);
 
-            int totalInputBits = value.Length * 8;
-            int totalOutputBits = pBlock.Length;
+            var totalInputBits = value.Length * 8;
+            var totalOutputBits = pBlock.Length;
 
             byte[] result = new byte[(totalOutputBits + 7) / 8];
 
-            for (int outBitIndex = 0; outBitIndex < totalOutputBits; outBitIndex++)
+            for (var outBitIndex = 0; outBitIndex < totalOutputBits; outBitIndex++)
             {
-                int inBitIndex = pBlock[outBitIndex] - startIndex;
+                var inBitIndex = pBlock[outBitIndex] - startIndex;
 
                 if (inBitIndex < 0 || inBitIndex >= totalInputBits)
-                {
                     throw new ArgumentOutOfRangeException(
                         nameof(pBlock),
                         $"pBlock[{outBitIndex}] = {pBlock[outBitIndex]} with startIndex = {startIndex} " +
                         $"yields bit index {inBitIndex}, which is out of range [0, {totalInputBits - 1}].");
-                }
 
-                int bit = GetBit(value, inBitIndex, direction);
+
+                var bit = GetBit(value, inBitIndex, direction);
                 SetBit(result, outBitIndex, bit, direction);
             }
 
             return result;
         }
-
-
-        public static byte[] Permute(
-            byte[] value,
-            int[] pBlock,
-            BitDirection direction,
-            BitIndexingBase indexBase) =>
-            Permute(value, pBlock, direction, (int)indexBase);
-
-
-        public static byte[] Permute(
-            byte[] value,
-            int[] pBlock,
-            BitNumbering numbering) =>
-            Permute(value, pBlock, numbering.GetDirection(), numbering.GetStartIndex());
-
-
-        public static byte[] Permute(
-            byte[] value,
-            int[] pBlock,
-            BitNumbering numbering,
-            int startIndex) =>
-            Permute(value, pBlock, numbering.GetDirection(), startIndex);
-
 
         public static int GetBit(byte[] data, int bitIndex, BitDirection direction)
         {
@@ -68,11 +43,10 @@ namespace CryptoLab1.Core
 
             var totalBits = data.Length * 8;
             if (bitIndex < 0 || bitIndex >= totalBits)
-            {
                 throw new ArgumentOutOfRangeException(
                     nameof(bitIndex),
                     $"Bit index {bitIndex} is out of range [0, {totalBits - 1}].");
-            }
+
 
             var (byteIndex, bitShift) = GetIndexAndShift(direction, data.Length, bitIndex);
 
@@ -84,25 +58,21 @@ namespace CryptoLab1.Core
         {
             ArgumentNullException.ThrowIfNull(data);
 
-            int totalBits = data.Length * 8;
+            var totalBits = data.Length * 8;
+
             if (bitIndex < 0 || bitIndex >= totalBits)
-            {
                 throw new ArgumentOutOfRangeException(
                     nameof(bitIndex),
                     $"Bit index {bitIndex} is out of range [0, {totalBits - 1}].");
-            }
 
             var (byteIndex, bitShift) = GetIndexAndShift(direction, data.Length, bitIndex);
 
 
             if (bitValue == 1)
-            {
                 data[byteIndex] |= (byte)(1 << bitShift);
-            }
             else
-            {
                 data[byteIndex] &= (byte)~(1 << bitShift);
-            }
+
 
         }
         private static (int byteIndex, int bitShift) GetIndexAndShift(BitDirection direction, int dataLen, int bitIndex)
