@@ -14,7 +14,7 @@ namespace CryptoLab1.Des
             ValidateKey(key);
 
             Span<byte> key56 = new byte[7];
-            BitPermutation.Permute(key, DesConstants.Pc1, BitNumbering.Msb1, key56);
+            BitPermutation.Permute(key, DesConstants.PС1, BitNumbering.Msb1, key56);
 
             var (c, d) = Split56To28BitHalves(key56);
 
@@ -30,7 +30,7 @@ namespace CryptoLab1.Des
                 Combine28BitHalvesTo56(c, d, cd56);
 
                 var roundKey = new byte[RoundKeySizeBytes];
-                BitPermutation.Permute(cd56, DesConstants.Pc2, BitNumbering.Msb1, roundKey);
+                BitPermutation.Permute(cd56, DesConstants.PС2, BitNumbering.Msb1, roundKey);
 
                 roundKeys[i] = roundKey;
             }
