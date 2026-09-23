@@ -4,12 +4,23 @@ namespace CryptoLab1.Core
 {
     // L_i = R_{i-1}
     // R_i = L_{i-1} XOR F(R_{i-1}, K_i)
-    public class FeistelNetwork(IKeyScheduler keyScheduler, IRoundFunction roundFunction, int rounds, int blockSizeBytes) : ISymmetricCipher
+    public class FeistelNetwork(
+        IKeyScheduler keyScheduler,
+        IRoundFunction roundFunction,
+        int rounds,
+        int blockSizeBytes,
+        int[]? initialPermutation = null,
+        int[]? finalPermutation = null,
+        BitNumbering permutationNumbering = BitNumbering.Msb1) : ISymmetricCipher
     {
         private readonly IKeyScheduler _keyScheduler = keyScheduler;
         private readonly IRoundFunction _roundFunction = roundFunction;
         private readonly int _rounds = rounds;
+        private readonly int[]? _initialPermutation = initialPermutation;
+        private readonly int[]? _finalPermutation = finalPermutation;
+        private readonly BitNumbering _permutationNumbering = permutationNumbering;
         private byte[][]? _roundKeys;
+        private const int MaxBlockSizeBytes = 256;
 
         public int BlockSizeBytes { get; } = blockSizeBytes % 2 == 0
             ? blockSizeBytes
@@ -32,30 +43,42 @@ namespace CryptoLab1.Core
         {
             ValidateInput(block);
 
-            var (left, right) = SplitBlock(block);
+            var current = new byte[BlockSizeBytes];
+
+            if (_initialPermutation is not null)
+                BitPermutation.Permute(block, _initialPermutation, _permutationNumbering, current);
+            else
+                block.CopyTo(current);
+
+            var halfSize = BlockSizeBytes / 2;
+
+            Span<byte> left = new byte[halfSize];
+            Span<byte> right = new byte[halfSize];
+            Span<byte> temp = new byte[halfSize];
+
+            current[..halfSize].CopyTo(left);
+            current[halfSize..].CopyTo(right);
 
             for (var round = 0; round < _rounds; round++)
             {
                 var key = GetRoundKey(round, reverseKeyOrder);
-                var f = _roundFunction.Transform(right, key);
+                var f = _roundFunction.Transform([.. right], key);
 
-                (left, right) = (right, Xor(left, f));
+                ByteUtils.Xor(left, f, temp);
+
+                right.CopyTo(left);
+                temp.CopyTo(right);
             }
 
-            return CombineHalves(right, left);
-        }
+            right.CopyTo(current.AsSpan()[..halfSize]);
+            left.CopyTo(current.AsSpan()[halfSize..]);
 
-        private (byte[] Left, byte[] Right) SplitBlock(byte[] block)
-        {
-            var half = BlockSizeBytes / 2;
-            return (block[..half], block[half..]);
-        }
-
-        private byte[] CombineHalves(byte[] first, byte[] second)
-        {
             var result = new byte[BlockSizeBytes];
-            first.CopyTo(result, 0);
-            second.CopyTo(result, first.Length);
+            if (_finalPermutation is not null)
+                BitPermutation.Permute(current, _finalPermutation, _permutationNumbering, result);
+            else
+                current.CopyTo(result);
+
             return result;
         }
 
@@ -66,6 +89,9 @@ namespace CryptoLab1.Core
 
             ArgumentNullException.ThrowIfNull(block);
 
+            if (blockSizeBytes is <= 0 or > MaxBlockSizeBytes || blockSizeBytes % 2 != 0)
+                throw new ArgumentOutOfRangeException(nameof(blockSizeBytes));
+
             if (block.Length != BlockSizeBytes)
                 throw new ArgumentException($"Block size is {block.Length} bytes, but {BlockSizeBytes} were expected.");
         }
@@ -75,18 +101,5 @@ namespace CryptoLab1.Core
 
         private int GetRoundKeyIndex(int roundN, bool reverseKeyOrder) =>
             reverseKeyOrder ? _rounds - 1 - roundN : roundN;
-
-        private static byte[] Xor(byte[] a, byte[] b)
-        {
-            if (a.Length != b.Length)
-                throw new ArgumentException($"Array lengths must be equal for XOR: {a.Length} and {b.Length}.");
-
-            var result = new byte[a.Length];
-
-            for (var i = 0; i < a.Length; i++)
-                result[i] = (byte)(a[i] ^ b[i]);
-
-            return result;
-        }
     }
 }
