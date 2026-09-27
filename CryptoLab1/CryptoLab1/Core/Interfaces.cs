@@ -18,6 +18,8 @@ namespace CryptoLab1.Core
         void SetKey(byte[] key);
         byte[] Encrypt(byte[] block);
         byte[] Decrypt(byte[] block);
+        void Encrypt(ReadOnlySpan<byte> input, Span<byte> output);
+        void Decrypt(ReadOnlySpan<byte> input, Span<byte> output);
     }
 
     public enum CipherMode

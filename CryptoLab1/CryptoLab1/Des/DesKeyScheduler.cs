@@ -1,4 +1,3 @@
-using System;
 using CryptoLab1.Core;
 
 namespace CryptoLab1.Des

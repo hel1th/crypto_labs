@@ -49,5 +49,10 @@ namespace CryptoLab1.Core
             Xor(a.AsSpan(), b.AsSpan(), result.AsSpan());
             return result;
         }
+
+        internal static ReadOnlySpan<byte> Xor(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

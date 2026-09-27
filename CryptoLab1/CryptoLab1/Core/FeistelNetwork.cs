@@ -35,26 +35,42 @@ namespace CryptoLab1.Core
             _roundKeys = roundKeys;
         }
 
-        public byte[] Encrypt(byte[] block) => Run(block, reverseKeyOrder: false);
-
-        public byte[] Decrypt(byte[] block) => Run(block, reverseKeyOrder: true);
-
-        private byte[] Run(byte[] block, bool reverseKeyOrder)
+        public byte[] Encrypt(byte[] block)
         {
-            ValidateInput(block);
+            ArgumentNullException.ThrowIfNull(block);
+            var result = new byte[BlockSizeBytes];
+            Encrypt(block, result);
+            return result;
+        }
 
-            var current = new byte[BlockSizeBytes];
+        public byte[] Decrypt(byte[] block)
+        {
+            ArgumentNullException.ThrowIfNull(block);
+            var result = new byte[BlockSizeBytes];
+            Decrypt(block, result);
+            return result;
+        }
+
+        public void Encrypt(ReadOnlySpan<byte> input, Span<byte> output) => Run(input, output, reverseKeyOrder: false);
+
+        public void Decrypt(ReadOnlySpan<byte> input, Span<byte> output) => Run(input, output, reverseKeyOrder: true);
+
+        private void Run(ReadOnlySpan<byte> input, Span<byte> output, bool reverseKeyOrder)
+        {
+            ValidateInput(input, output);
+
+            Span<byte> current = stackalloc byte[BlockSizeBytes];
 
             if (_initialPermutation is not null)
-                BitPermutation.Permute(block, _initialPermutation, _permutationNumbering, current);
+                BitPermutation.Permute(input, _initialPermutation, _permutationNumbering, current);
             else
-                block.CopyTo(current);
+                input.CopyTo(current);
 
             var halfSize = BlockSizeBytes / 2;
 
-            Span<byte> left = new byte[halfSize];
-            Span<byte> right = new byte[halfSize];
-            Span<byte> temp = new byte[halfSize];
+            Span<byte> left = stackalloc byte[halfSize];
+            Span<byte> right = stackalloc byte[halfSize];
+            Span<byte> temp = stackalloc byte[halfSize];
 
             current[..halfSize].CopyTo(left);
             current[halfSize..].CopyTo(right);
@@ -70,30 +86,28 @@ namespace CryptoLab1.Core
                 temp.CopyTo(right);
             }
 
-            right.CopyTo(current.AsSpan()[..halfSize]);
-            left.CopyTo(current.AsSpan()[halfSize..]);
+            right.CopyTo(current[..halfSize]);
+            left.CopyTo(current[halfSize..]);
 
-            var result = new byte[BlockSizeBytes];
             if (_finalPermutation is not null)
-                BitPermutation.Permute(current, _finalPermutation, _permutationNumbering, result);
+                BitPermutation.Permute(current, _finalPermutation, _permutationNumbering, output);
             else
-                current.CopyTo(result);
-
-            return result;
+                current.CopyTo(output);
         }
 
-        private void ValidateInput(byte[] block)
+        private void ValidateInput(ReadOnlySpan<byte> input, Span<byte> output)
         {
             if (_roundKeys == null)
                 throw new InvalidOperationException("Round keys are not set. Call SetKey before encryption/decryption.");
 
-            ArgumentNullException.ThrowIfNull(block);
-
             if (blockSizeBytes is <= 0 or > MaxBlockSizeBytes || blockSizeBytes % 2 != 0)
                 throw new ArgumentOutOfRangeException(nameof(blockSizeBytes));
 
-            if (block.Length != BlockSizeBytes)
-                throw new ArgumentException($"Block size is {block.Length} bytes, but {BlockSizeBytes} were expected.");
+            if (input.Length != BlockSizeBytes)
+                throw new ArgumentException($"Block size is {input.Length} bytes, but {BlockSizeBytes} were expected.");
+
+            if (output.Length < BlockSizeBytes)
+                throw new ArgumentException($"Output buffer length ({output.Length}) is smaller than block size ({BlockSizeBytes}).");
         }
 
         private byte[] GetRoundKey(int roundN, bool reverseKeyOrder) =>
