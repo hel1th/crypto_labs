@@ -1,4 +1,3 @@
-using System;
 
 namespace CryptoLab1.Core.Modes
 {
@@ -12,10 +11,9 @@ namespace CryptoLab1.Core.Modes
         void Encrypt(ISymmetricCipher cipher,
             ReadOnlySpan<byte> input,
             Span<byte> output,
-            string? iv,
+            byte[]? iv,
             object[]? extraParams);
 
-    
         void Decrypt(
             ISymmetricCipher cipher,
             ReadOnlySpan<byte> input,
