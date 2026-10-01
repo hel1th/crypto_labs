@@ -1,4 +1,3 @@
-using System;
 
 namespace CryptoLab1.Core
 {
