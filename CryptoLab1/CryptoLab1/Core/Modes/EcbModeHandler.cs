@@ -1,4 +1,3 @@
-
 namespace CryptoLab1.Core.Modes
 {
     internal class EcbModeHandler : ICipherModeHandler
@@ -7,26 +6,14 @@ namespace CryptoLab1.Core.Modes
 
         public bool RequiresPadding => true;
 
-        public void Encrypt(ISymmetricCipher cipher,
+        public void Encrypt(
+            ISymmetricCipher cipher,
             ReadOnlySpan<byte> input,
             Span<byte> output,
             byte[]? iv,
             object[]? extraParams)
         {
-            Validate(cipher, input, output);
-
-            var blockSize = cipher.BlockSizeBytes;
-            var blockCount = input.Length / blockSize;
-
-            for (var i = 0; i < blockCount; i++)
-            {
-                var offset = i * blockSize;
-
-                var inputBlock = input.Slice(offset, blockSize);
-                var outputBlock = output.Slice(offset, blockSize);
-                    
-                cipher.Encrypt(inputBlock, outputBlock);
-            }
+            EncryptChunk(cipher, input, output, [], extraParams);
         }
 
         public void Decrypt(
@@ -36,19 +23,96 @@ namespace CryptoLab1.Core.Modes
             byte[]? iv,
             object[]? extraParams)
         {
+            DecryptChunk(cipher, input, output, [], extraParams);
+        }
+
+        private const int ParallelThreshold = 4;
+
+        public void EncryptChunk(
+            ISymmetricCipher cipher,
+            ReadOnlySpan<byte> input,
+            Span<byte> output,
+            Span<byte> state,
+            object[]? extraParams)
+        {
             Validate(cipher, input, output);
 
             var blockSize = cipher.BlockSizeBytes;
             var blockCount = input.Length / blockSize;
 
-            for (var i = 0; i < blockCount; i++)
+            if (blockCount >= ParallelThreshold)
             {
-                var offset = i * blockSize;
+                unsafe
+                {
+                    fixed (byte* pIn = input, pOut = output)
+                    {
+                        var inAddr = (nint)pIn;
+                        var outAddr = (nint)pOut;
 
-                var inputBlock = input.Slice(offset, blockSize);
-                var outputBlock = output.Slice(offset, blockSize);
+                        Parallel.For(0, blockCount, i =>
+                        {
+                            var offset = i * blockSize;
+                            var inBlock = new ReadOnlySpan<byte>((byte*)(inAddr + offset), blockSize);
+                            var outBlock = new Span<byte>((byte*)(outAddr + offset), blockSize);
+                            cipher.Encrypt(inBlock, outBlock);
+                        });
+                    }
+                }
+            }
+            else
+            {
+                for (var i = 0; i < blockCount; i++)
+                {
+                    var offset = i * blockSize;
+                    var inputBlock = input.Slice(offset, blockSize);
+                    var outputBlock = output.Slice(offset, blockSize);
 
-                cipher.Decrypt(inputBlock, outputBlock);
+                    cipher.Encrypt(inputBlock, outputBlock);
+                }
+            }
+        }
+
+        public void DecryptChunk(
+            ISymmetricCipher cipher,
+            ReadOnlySpan<byte> input,
+            Span<byte> output,
+            Span<byte> state,
+            object[]? extraParams)
+        {
+            Validate(cipher, input, output);
+
+            var blockSize = cipher.BlockSizeBytes;
+            var blockCount = input.Length / blockSize;
+
+            if (blockCount >= ParallelThreshold)
+            {
+                unsafe
+                {
+                    fixed (byte* pIn = input, pOut = output)
+                    {
+                        var inAddr = (nint)pIn;
+                        var outAddr = (nint)pOut;
+
+                        Parallel.For(0, blockCount, i =>
+                        {
+                            var offset = i * blockSize;
+                            var inBlock = new ReadOnlySpan<byte>((byte*)(inAddr + offset), blockSize);
+                            var outBlock = new Span<byte>((byte*)(outAddr + offset), blockSize);
+                            cipher.Decrypt(inBlock, outBlock);
+                        });
+                    }
+                }
+            }
+            else
+            {
+                for (var i = 0; i < blockCount; i++)
+                {
+                    var offset = i * blockSize;
+                    var inputBlock = input.Slice(offset, blockSize);
+                    var outputBlock = output.Slice(offset, blockSize);
+
+                    cipher.Decrypt(inputBlock, outputBlock);
+                }
             }
         }
 
@@ -68,4 +132,3 @@ namespace CryptoLab1.Core.Modes
         }
     }
 }
-

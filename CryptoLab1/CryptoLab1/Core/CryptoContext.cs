@@ -58,21 +58,15 @@ namespace CryptoLab1.Core
             var blockSize = Cipher.BlockSizeBytes;
 
             if (!_handler.RequiresIv)
-            {
                 return null;
-            }
 
             if (iv == null)
-            {
                 return RandomNumberGenerator.GetBytes(blockSize);
-            }
 
 
             if (iv.Length != blockSize)
-            {
-
                 throw new ArgumentException($"IV must be exactly {blockSize} bytes long, but was {iv.Length} bytes.", nameof(iv));
-            }
+            
 
 
             return (byte[])iv.Clone();
@@ -127,29 +121,157 @@ namespace CryptoLab1.Core
             return output;
         }
 
-        public async Task EncryptFileAsync(string inputFilePath, string outputFilePath, CancellationToken cancellationToken = default)
+        public Task<byte[]> EncryptAsync(byte[] input, CancellationToken cancellationToken = default)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(inputFilePath);
-            ArgumentException.ThrowIfNullOrWhiteSpace(outputFilePath);
-
-
-            var data = await File.ReadAllBytesAsync(inputFilePath, cancellationToken).ConfigureAwait(false);
-
-            Encrypt(data, out var encrypted);
-
-            await File.WriteAllBytesAsync(outputFilePath, encrypted, cancellationToken).ConfigureAwait(false);
+            ArgumentNullException.ThrowIfNull(input);
+            return Task.Run(() => Encrypt(input), cancellationToken);
         }
 
-        public async Task DecryptFileAsync(string inputFilePath, string outputFilePath, CancellationToken cancellationToken = default)
+        public Task<byte[]> DecryptAsync(byte[] input, CancellationToken cancellationToken = default)
+        {
+            ArgumentNullException.ThrowIfNull(input);
+            return Task.Run(() => Decrypt(input), cancellationToken);
+        }
+
+        private const int FileBufferSize = 1024 * 1024; // 1 MB chunk buffer
+
+        public Task EncryptFileAsync(string inputFilePath, string outputFilePath, CancellationToken cancellationToken) =>
+            EncryptFileAsync(inputFilePath, outputFilePath, null, cancellationToken);
+
+        public Task DecryptFileAsync(string inputFilePath, string outputFilePath, CancellationToken cancellationToken) =>
+            DecryptFileAsync(inputFilePath, outputFilePath, null, cancellationToken);
+
+        public async Task EncryptFileAsync(
+            string inputFilePath,
+            string outputFilePath,
+            Action<long, long>? onProgress = null,
+            CancellationToken cancellationToken = default)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(inputFilePath);
             ArgumentException.ThrowIfNullOrWhiteSpace(outputFilePath);
 
-            var data = await File.ReadAllBytesAsync(inputFilePath, cancellationToken).ConfigureAwait(false);
+            var blockSize = Cipher.BlockSizeBytes;
+            var bufferSize = Math.Max(blockSize, FileBufferSize / blockSize * blockSize);
 
-            Decrypt(data, out var decrypted);
+            var inBuffer = new byte[bufferSize];
+            var outBuffer = new byte[bufferSize];
+            var state = Iv != null ? (byte[])Iv.Clone() : new byte[blockSize];
 
-            await File.WriteAllBytesAsync(outputFilePath, decrypted, cancellationToken).ConfigureAwait(false);
+            await using var inputStream = new FileStream(
+                inputFilePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 64 * 1024,
+                useAsync: true);
+
+            await using var outputStream = new FileStream(
+                outputFilePath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 64 * 1024,
+                useAsync: true);
+
+            var fileLength = inputStream.Length;
+
+            while (inputStream.Position < fileLength)
+            {
+                var remaining = fileLength - inputStream.Position;
+                var toRead = (int)Math.Min(bufferSize, remaining);
+
+                await inputStream.ReadExactlyAsync(inBuffer.AsMemory(0, toRead), cancellationToken).ConfigureAwait(false);
+
+                var isLast = inputStream.Position == fileLength;
+
+                if (!isLast)
+                {
+                    _handler.EncryptChunk(Cipher, inBuffer.AsSpan(0, toRead), outBuffer.AsSpan(0, toRead), state, ExtraParams);
+                    await outputStream.WriteAsync(outBuffer.AsMemory(0, toRead), cancellationToken).ConfigureAwait(false);
+                    onProgress?.Invoke(inputStream.Position, fileLength);
+                }
+                else
+                {
+                    var paddedTail = Padding.Apply(inBuffer.AsSpan(0, toRead), blockSize, PaddingMode);
+                    var outputTail = new byte[paddedTail.Length];
+                    _handler.EncryptChunk(Cipher, paddedTail, outputTail, state, ExtraParams);
+                    await outputStream.WriteAsync(outputTail, cancellationToken).ConfigureAwait(false);
+                    onProgress?.Invoke(fileLength, fileLength);
+                    return;
+                }
+            }
+
+            if (fileLength == 0)
+            {
+                var paddedTail = Padding.Apply([], blockSize, PaddingMode);
+                var outputTail = new byte[paddedTail.Length];
+                _handler.EncryptChunk(Cipher, paddedTail, outputTail, state, ExtraParams);
+                await outputStream.WriteAsync(outputTail, cancellationToken).ConfigureAwait(false);
+                onProgress?.Invoke(0, 0);
+            }
+        }
+
+        public async Task DecryptFileAsync(
+            string inputFilePath,
+            string outputFilePath,
+            Action<long, long>? onProgress = null,
+            CancellationToken cancellationToken = default)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(inputFilePath);
+            ArgumentException.ThrowIfNullOrWhiteSpace(outputFilePath);
+
+            var blockSize = Cipher.BlockSizeBytes;
+
+            await using var inputStream = new FileStream(
+                inputFilePath,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                bufferSize: 64 * 1024,
+                useAsync: true);
+
+            var fileLength = inputStream.Length;
+            if (fileLength == 0 || fileLength % blockSize != 0)
+                throw new ArgumentException($"Ciphertext file length ({fileLength}) must be a non-zero multiple of block size ({blockSize}).", nameof(inputFilePath));
+
+            var bufferSize = Math.Max(blockSize, FileBufferSize / blockSize * blockSize);
+            var inBuffer = new byte[bufferSize];
+            var outBuffer = new byte[bufferSize];
+            var state = Iv != null ? (byte[])Iv.Clone() : new byte[blockSize];
+
+            await using var outputStream = new FileStream(
+                outputFilePath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 64 * 1024,
+                useAsync: true);
+
+            while (inputStream.Position < fileLength)
+            {
+                var remaining = fileLength - inputStream.Position;
+                var toRead = (int)Math.Min(bufferSize, remaining);
+
+                await inputStream.ReadExactlyAsync(inBuffer.AsMemory(0, toRead), cancellationToken).ConfigureAwait(false);
+
+                var isLast = inputStream.Position == fileLength;
+
+                _handler.DecryptChunk(Cipher, inBuffer.AsSpan(0, toRead), outBuffer.AsSpan(0, toRead), state, ExtraParams);
+                if (!isLast)
+                {
+                    await outputStream.WriteAsync(outBuffer.AsMemory(0, toRead), cancellationToken).ConfigureAwait(false);
+                    onProgress?.Invoke(inputStream.Position, fileLength);
+                }
+                else
+                {
+                    var unpaddedTail = Padding.Remove(outBuffer.AsSpan(0, toRead), blockSize, PaddingMode);
+                    if (unpaddedTail.Length > 0)
+                    {
+                        await outputStream.WriteAsync(unpaddedTail, cancellationToken).ConfigureAwait(false);
+                    }
+                    onProgress?.Invoke(fileLength, fileLength);
+                }
+            }
         }
     }
 }

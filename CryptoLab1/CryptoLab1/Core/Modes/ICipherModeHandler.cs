@@ -1,4 +1,3 @@
-
 namespace CryptoLab1.Core.Modes
 {
     internal interface ICipherModeHandler
@@ -7,8 +6,8 @@ namespace CryptoLab1.Core.Modes
 
         bool RequiresPadding { get; }
 
-
-        void Encrypt(ISymmetricCipher cipher,
+        void Encrypt(
+            ISymmetricCipher cipher,
             ReadOnlySpan<byte> input,
             Span<byte> output,
             byte[]? iv,
@@ -19,6 +18,20 @@ namespace CryptoLab1.Core.Modes
             ReadOnlySpan<byte> input,
             Span<byte> output,
             byte[]? iv,
+            object[]? extraParams);
+
+        void EncryptChunk(
+            ISymmetricCipher cipher,
+            ReadOnlySpan<byte> input,
+            Span<byte> output,
+            Span<byte> state,
+            object[]? extraParams);
+
+        void DecryptChunk(
+            ISymmetricCipher cipher,
+            ReadOnlySpan<byte> input,
+            Span<byte> output,
+            Span<byte> state,
             object[]? extraParams);
     }
 }

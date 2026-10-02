@@ -1,4 +1,3 @@
-using System;
 
 namespace CryptoLab1.Core
 {
@@ -10,6 +9,12 @@ namespace CryptoLab1.Core
     public interface IRoundFunction
     {
         byte[] Transform(byte[] inputBlock, byte[] roundKey);
+
+        void Transform(ReadOnlySpan<byte> inputBlock, ReadOnlySpan<byte> roundKey, Span<byte> destination)
+        {
+            var res = Transform([.. inputBlock], [.. roundKey]);
+            res.CopyTo(destination);
+        }
     }
 
     public interface ISymmetricCipher

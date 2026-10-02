@@ -6,19 +6,32 @@ namespace CryptoLab1.Des
     {
         public byte[] Transform(byte[] inputBlock, byte[] roundKey)
         {
-            var expanded = BitPermutation.Permute(inputBlock, DesConstants.E, BitNumbering.Msb1);
-            var xored = ByteUtils.Xor(expanded, roundKey);
-            var substituted = SBoxSubstitute(xored);
-
-            return BitPermutation.Permute(substituted, DesConstants.P, BitNumbering.Msb1);
+            var result = new byte[4];
+            Transform(inputBlock, roundKey, result);
+            return result;
         }
 
-        private static byte[] SBoxSubstitute(byte[] input48)
+        public void Transform(ReadOnlySpan<byte> inputBlock, ReadOnlySpan<byte> roundKey, Span<byte> destination)
+        {
+            Span<byte> expanded = stackalloc byte[6];
+            BitPermutation.Permute(inputBlock, DesConstants.E, BitNumbering.Msb1, expanded);
+
+            Span<byte> xored = stackalloc byte[6];
+            ByteUtils.Xor(expanded, roundKey, xored);
+
+            Span<byte> substituted = stackalloc byte[4];
+            SBoxSubstitute(xored, substituted);
+
+            BitPermutation.Permute(substituted, DesConstants.P, BitNumbering.Msb1, destination);
+        }
+
+        private static void SBoxSubstitute(ReadOnlySpan<byte> input48, Span<byte> output32)
         {
             if (input48.Length != 6)
                 throw new ArgumentException("Input must be 6 bytes (48 bits) for S-box substitution.");
 
-            var output32 = new byte[4];
+            if (output32.Length < 4)
+                throw new ArgumentException("Output must have at least 4 bytes (32 bits).");
 
             for (var b = 0; b < 4; b++)
             {
@@ -33,11 +46,9 @@ namespace CryptoLab1.Des
 
                 output32[b] = (byte)((val1 << 4) | val2);
             }
-
-            return output32;
         }
 
-        private static byte GetChunk(int i, byte[] input48)
+        private static byte GetChunk(int i, ReadOnlySpan<byte> input48)
         {
             var bitOffset = i * 6;
             var byteIndex = bitOffset / 8;

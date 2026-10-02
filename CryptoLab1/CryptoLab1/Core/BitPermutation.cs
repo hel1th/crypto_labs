@@ -1,10 +1,8 @@
-using System;
 
 namespace CryptoLab1.Core
 {
     public static class BitPermutation
     {
-
         public static void Permute(
             ReadOnlySpan<byte> value,
             int[] pBlock,
@@ -34,7 +32,9 @@ namespace CryptoLab1.Core
                         $"yields bit index {inBitIndex}, which is out of range [0, {totalInputBits - 1}].");
 
                 var bit = GetBit(value, inBitIndex, direction);
-                SetBit(destination, outBitIndex, bit, direction);
+                
+                if (bit != 0)
+                    SetBit(destination, outBitIndex, 1, direction);
             }
         }
 
@@ -44,7 +44,6 @@ namespace CryptoLab1.Core
             BitNumbering numbering,
             Span<byte> destination) =>
             Permute(value, pBlock, numbering.GetDirection(), numbering.GetStartIndex(), destination);
-
 
         public static byte[] Permute(
             byte[] value,
@@ -101,13 +100,13 @@ namespace CryptoLab1.Core
             int byteIndex, bitShift;
             if (direction == BitDirection.MsbFirst)
             {
-                byteIndex = bitIndex / 8;
-                bitShift = 7 - (bitIndex % 8);
+                byteIndex = bitIndex >> 3;
+                bitShift = 7 - (bitIndex & 7);
             }
             else
             {
-                byteIndex = dataLen - 1 - bitIndex / 8;
-                bitShift = bitIndex % 8;
+                byteIndex = dataLen - 1 - (bitIndex >> 3);
+                bitShift = bitIndex & 7;
             }
 
             return (byteIndex, bitShift);

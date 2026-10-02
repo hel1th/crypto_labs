@@ -1,4 +1,3 @@
-
 namespace CryptoLab1.Core.Modes
 {
     internal class PcbcModeHandler : ICipherModeHandler
@@ -16,27 +15,11 @@ namespace CryptoLab1.Core.Modes
         {
             Validate(cipher, input, output, iv);
 
-            var blockSize = cipher.BlockSizeBytes;
-            var blockCount = input.Length / blockSize;
+            Span<byte> state = stackalloc byte[cipher.BlockSizeBytes];
+            iv!.CopyTo(state);
 
-            Span<byte> feedback = stackalloc byte[blockSize];
-            iv!.CopyTo(feedback);
-
-            Span<byte> xorBlock = stackalloc byte[blockSize];
-
-            for (var i = 0; i < blockCount; i++)
-            {
-                var offset = i * blockSize;
-                var inputBlock = input.Slice(offset, blockSize);
-                var outputBlock = output.Slice(offset, blockSize);
-
-                ByteUtils.Xor(inputBlock, feedback, xorBlock);
-                cipher.Encrypt(xorBlock, outputBlock);
-
-                ByteUtils.Xor(inputBlock, outputBlock, feedback);
-            }
+            EncryptChunk(cipher, input, output, state, extraParams);
         }
-
 
         public void Decrypt(
             ISymmetricCipher cipher,
@@ -47,28 +30,100 @@ namespace CryptoLab1.Core.Modes
         {
             Validate(cipher, input, output, iv);
 
+            Span<byte> state = stackalloc byte[cipher.BlockSizeBytes];
+            iv!.CopyTo(state);
+
+            DecryptChunk(cipher, input, output, state, extraParams);
+        }
+
+        public void EncryptChunk(
+            ISymmetricCipher cipher,
+            ReadOnlySpan<byte> input,
+            Span<byte> output,
+            Span<byte> state,
+            object[]? extraParams)
+        {
+            ValidateChunk(cipher, input, output, state);
+
             var blockSize = cipher.BlockSizeBytes;
             var blockCount = input.Length / blockSize;
 
-            Span<byte> feedback = stackalloc byte[blockSize];
-            iv!.CopyTo(feedback);
-
-            Span<byte> currentCipherBlock = stackalloc byte[blockSize];
+            Span<byte> xorBlock = stackalloc byte[blockSize];
 
             for (var i = 0; i < blockCount; i++)
             {
                 var offset = i * blockSize;
-
                 var inputBlock = input.Slice(offset, blockSize);
                 var outputBlock = output.Slice(offset, blockSize);
 
-                inputBlock.CopyTo(currentCipherBlock);
+                ByteUtils.Xor(inputBlock, state, xorBlock);
+                cipher.Encrypt(xorBlock, outputBlock);
 
-                cipher.Decrypt(currentCipherBlock, outputBlock);
+                ByteUtils.Xor(inputBlock, outputBlock, state);
+            }
+        }
 
-                ByteUtils.Xor(outputBlock, feedback, outputBlock);
+        private const int ParallelThreshold = 4;
 
-                ByteUtils.Xor(outputBlock, currentCipherBlock, feedback);
+        public void DecryptChunk(
+            ISymmetricCipher cipher,
+            ReadOnlySpan<byte> input,
+            Span<byte> output,
+            Span<byte> state,
+            object[]? extraParams)
+        {
+            ValidateChunk(cipher, input, output, state);
+
+            var blockSize = cipher.BlockSizeBytes;
+            var blockCount = input.Length / blockSize;
+
+            if (blockCount >= ParallelThreshold)
+            {
+                unsafe
+                {
+                    fixed (byte* pIn = input, pOut = output)
+                    {
+                        var inAddr = (nint)pIn;
+                        var outAddr = (nint)pOut;
+
+                        Parallel.For(0, blockCount, i =>
+                        {
+                            var offset = i * blockSize;
+                            var inBlock = new ReadOnlySpan<byte>((byte*)(inAddr + offset), blockSize);
+                            var outBlock = new Span<byte>((byte*)(outAddr + offset), blockSize);
+
+                            cipher.Decrypt(inBlock, outBlock);
+                        });
+                    }
+                }
+
+                for (var i = 0; i < blockCount; i++)
+                {
+                    var offset = i * blockSize;
+                    var currentCipherBlock = input.Slice(offset, blockSize);
+                    var outputBlock = output.Slice(offset, blockSize);
+
+                    ByteUtils.Xor(outputBlock, state, outputBlock);
+                    ByteUtils.Xor(outputBlock, currentCipherBlock, state);
+                }
+            }
+            else
+            {
+                Span<byte> currentCipherBlock = stackalloc byte[blockSize];
+
+                for (var i = 0; i < blockCount; i++)
+                {
+                    var offset = i * blockSize;
+                    var inputBlock = input.Slice(offset, blockSize);
+                    var outputBlock = output.Slice(offset, blockSize);
+
+                    inputBlock.CopyTo(currentCipherBlock);
+
+                    cipher.Decrypt(currentCipherBlock, outputBlock);
+
+                    ByteUtils.Xor(outputBlock, state, outputBlock);
+                    ByteUtils.Xor(outputBlock, currentCipherBlock, state);
+                }
             }
         }
 
@@ -89,6 +144,23 @@ namespace CryptoLab1.Core.Modes
             if (output.Length < input.Length)
                 throw new ArgumentException($"Output length ({output.Length}) must be at least as long as input length ({input.Length}).", nameof(output));
         }
+
+        private static void ValidateChunk(
+            ISymmetricCipher cipher,
+            ReadOnlySpan<byte> input,
+            Span<byte> output,
+            ReadOnlySpan<byte> state)
+        {
+            ArgumentNullException.ThrowIfNull(cipher);
+
+            if (state.Length != cipher.BlockSizeBytes)
+                throw new ArgumentException($"State must be {cipher.BlockSizeBytes} bytes long.", nameof(state));
+
+            if (input.Length % cipher.BlockSizeBytes != 0)
+                throw new ArgumentException($"Input length ({input.Length}) must be a multiple of block size ({cipher.BlockSizeBytes}).", nameof(input));
+
+            if (output.Length < input.Length)
+                throw new ArgumentException($"Output length ({output.Length}) must be at least as long as input length ({input.Length}).", nameof(output));
+        }
     }
 }
-

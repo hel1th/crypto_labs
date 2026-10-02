@@ -12,6 +12,9 @@
 .idea/
 .vscode/
 
+samples/
+!samples/masterpieces/
+
 
 # Build results
 [Dd]ebug/

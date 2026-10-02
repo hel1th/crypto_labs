@@ -1,4 +1,3 @@
-using System;
 
 namespace CryptoLab1.Core
 {
@@ -15,7 +14,7 @@ namespace CryptoLab1.Core
     {
         private readonly IKeyScheduler _keyScheduler = keyScheduler;
         private readonly IRoundFunction _roundFunction = roundFunction;
-        private readonly int _rounds = rounds;
+        private int _rounds = rounds;
         private readonly int[]? _initialPermutation = initialPermutation;
         private readonly int[]? _finalPermutation = finalPermutation;
         private readonly BitNumbering _permutationNumbering = permutationNumbering;
@@ -29,9 +28,10 @@ namespace CryptoLab1.Core
         public void SetKey(byte[] key)
         {
             var roundKeys = _keyScheduler.GenerateRoundKeys(key);
-            if (roundKeys.Length != _rounds)
+            if (_rounds > 0 && roundKeys.Length != _rounds)
                 throw new ArgumentException($"Key scheduler returned {roundKeys.Length} round keys, but {_rounds} were expected.");
 
+            _rounds = roundKeys.Length;
             _roundKeys = roundKeys;
         }
 
@@ -71,6 +71,7 @@ namespace CryptoLab1.Core
             Span<byte> left = stackalloc byte[halfSize];
             Span<byte> right = stackalloc byte[halfSize];
             Span<byte> temp = stackalloc byte[halfSize];
+            Span<byte> f = stackalloc byte[halfSize];
 
             current[..halfSize].CopyTo(left);
             current[halfSize..].CopyTo(right);
@@ -78,7 +79,7 @@ namespace CryptoLab1.Core
             for (var round = 0; round < _rounds; round++)
             {
                 var key = GetRoundKey(round, reverseKeyOrder);
-                var f = _roundFunction.Transform([.. right], key);
+                _roundFunction.Transform(right, key, f);
 
                 ByteUtils.Xor(left, f, temp);
 

@@ -42,9 +42,8 @@ namespace CryptoLab1.Core
 
                 case PaddingMode.Iso10126:
                     if (padLen > 1)
-                    {
                         RandomNumberGenerator.Fill(padSpan[..^1]);
-                    }
+                    
                     padSpan[^1] = (byte)padLen;
                     break;
 
@@ -73,10 +72,9 @@ namespace CryptoLab1.Core
             {
                 var end = data.Length;
                 while (end > 0 && data[end - 1] == 0)
-                {
                     end--;
-                }
-                return data[..end].ToArray();
+                    
+                return [.. data[..end]];
             }
 
             var padLen = GetAndValidatePaddingLength(data, blockSize, mode);
@@ -107,7 +105,7 @@ namespace CryptoLab1.Core
                     throw new ArgumentOutOfRangeException(nameof(mode), mode, "Unsupported padding mode.");
             }
 
-            return data[..padStart].ToArray();
+            return [.. data[..padStart]];
         }
 
         private static int GetAndValidatePaddingLength(ReadOnlySpan<byte> data, int blockSize, PaddingMode mode)
@@ -123,16 +121,12 @@ namespace CryptoLab1.Core
         {
             var remainder = dataLength % blockSize;
 
-            if (mode == PaddingMode.Zeros)
-            {
-                if (dataLength == 0)
-                    return blockSize;
+            if (mode != PaddingMode.Zeros) return remainder == 0 ? blockSize : blockSize - remainder;
 
-                return remainder == 0 ? 0 : blockSize - remainder;
-            }
+            if (dataLength == 0)
+                return blockSize;
 
-            // Для AnsiX923 Pkcs7 Iso10126 всегда добавляется от 1 до blockSize байтов
-            return remainder == 0 ? blockSize : blockSize - remainder;
+            return remainder == 0 ? 0 : blockSize - remainder;
         }
 
         private static void ValidateBlockSize(int blockSize)
